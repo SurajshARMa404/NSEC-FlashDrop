@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
+  const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/+$/, '')
+  const redirectUrl = `${appUrl}/auth/callback`
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
@@ -38,7 +40,7 @@ export default function Login() {
     setLoading(true)
     const { error: authError } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: redirectUrl },
     })
     setLoading(false)
 
