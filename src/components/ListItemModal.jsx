@@ -1,225 +1,172 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getSellerUsername, parseItemImages } from '../lib/itemMedia'
 
-const CATEGORIES = ['Books', 'Electronics', 'Clothing', 'Furniture', 'Other']
-const CONDITIONS = ['Like New', 'Good', 'Fair']
+function openWhatsApp(sellerPhone, itemTitle, price) {
+  const message = encodeURIComponent(
+    `Hi! I saw your listing on NSEC FlashDrop — *${itemTitle}* for ₹${price}. Is it still available? I can come pick it up today!`
+  )
+  window.open(`https://wa.me/${sellerPhone}?text=${message}`, '_blank')
+}
 
-export default function ListItemModal({ onClose }) {
-  const minExpiry = new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    price: '',
-    category: 'Books',
-    condition: 'Good',
-    seller_whatsapp: '',
-    expires_at: '',
-  })
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
-  const [loading, setLoading] = useState(false)
+export default function ListItemModal({ item, currentUser, onClose }) {
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const [claiming, setClaiming] = useState(false)
   const [error, setError] = useState('')
+  const navigate = useNavigate()
 
-  const handleChange = e => {
-    setForm(f => ({ ...f, [e.target.name]: e.target.value }))
-  }
-
-  const handleImage = e => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview)
-    }
-
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
-  }
+  const images = useMemo(() => parseItemImages(item), [item])
+  const activeImage = images[activeImageIndex] || null
+  const sellerUsername = getSellerUsername(item).toUpperCase()
 
   useEffect(() => {
-    return () => {
-      if (imagePreview) {
-        URL.revokeObjectURL(imagePreview)
+    const onEscape = event => {
+      if (event.key === 'Escape') {
+        onClose()
       }
     }
-  }, [imagePreview])
+    window.addEventListener('keydown', onEscape)
+    return () => window.removeEventListener('keydown', onEscape)
+  }, [onClose])
 
-  const handleSubmit = async e => {
-    e.preventDefault()
+  const handleClaim = async () => {
     setError('')
-    setLoading(true)
 
+    if (!item?.seller_whatsapp) {
+      setError('Seller WhatsApp is missing for this listing.')
+      return
+    }
+    if (!currentUser) {
+      setError('Sign in with your NSEC email to claim this item.')
+      navigate('/login')
+      return
+    }
+
+    setClaiming(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('You must be signed in to post a listing.')
-      if (!user.email?.toLowerCase().endsWith('@nsec.ac.in')) {
-        throw new Error('Only @nsec.ac.in accounts can create listings.')
+      const { data: insertedRows, error: interestError } = await supabase
+        .from('interest_clicks')
+        .upsert(
+          { item_id: item.id, user_id: currentUser.id },
+          { onConflict: 'item_id,user_id', ignoreDuplicates: true }
+        )
+        .select('id')
+
+      if (interestError) throw interestError
+
+      if (insertedRows?.length) {
+        const { error: rpcError } = await supabase.rpc('increment_interest', { item_id: item.id })
+        if (rpcError) throw rpcError
       }
 
-      const parsedPrice = Number.parseInt(form.price, 10)
-      if (!Number.isInteger(parsedPrice) || parsedPrice < 1) {
-        throw new Error('Price must be a positive number.')
-      }
-
-      const normalizedTitle = form.title.trim()
-      if (!normalizedTitle) {
-        throw new Error('Item title is required.')
-      }
-
-      const sanitizedWhatsapp = form.seller_whatsapp.replace(/\D/g, '')
-      if (sanitizedWhatsapp.length < 10) {
-        throw new Error('Please enter a valid WhatsApp number with country code.')
-      }
-
-      const expiryDate = new Date(form.expires_at)
-      if (Number.isNaN(expiryDate.getTime())) {
-        throw new Error('Please provide a valid expiry date.')
-      }
-      if (expiryDate <= new Date()) {
-        throw new Error('Expiry date must be in the future.')
-      }
-
-      let image_url = null
-
-      // Upload image if selected
-      if (imageFile) {
-        if (!imageFile.type.startsWith('image/')) {
-          throw new Error('Only image uploads are allowed.')
-        }
-        if (imageFile.size > 5 * 1024 * 1024) {
-          throw new Error('Image size must be under 5MB.')
-        }
-
-        const ext = imageFile.name.split('.').pop()
-        const filename = `${user.id}/${Date.now()}.${ext}`
-        const { error: uploadError } = await supabase.storage
-          .from('item-images')
-          .upload(filename, imageFile, {
-            cacheControl: '3600',
-            contentType: imageFile.type,
-            upsert: false,
-          })
-        if (uploadError) throw uploadError
-
-        const { data: urlData } = supabase.storage
-          .from('item-images')
-          .getPublicUrl(filename)
-        image_url = urlData.publicUrl
-      }
-
-      const { error: insertError } = await supabase.from('items').insert({
-        seller_id: user.id,
-        seller_name: user.email.split('@')[0],
-        seller_whatsapp: sanitizedWhatsapp,
-        title: normalizedTitle,
-        description: form.description.trim(),
-        price: parsedPrice,
-        category: form.category,
-        condition: form.condition,
-        image_url,
-        expires_at: expiryDate.toISOString(),
-      })
-
-      if (insertError) throw insertError
-      onClose()
-    } catch (err) {
-      setError(err.message || 'Something went wrong. Try again.')
+      openWhatsApp(item.seller_whatsapp, item.title, item.price)
+    } catch (claimError) {
+      setError(claimError.message || 'Could not claim item right now.')
     } finally {
-      setLoading(false)
+      setClaiming(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}>
-      <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto" style={{ background: 'var(--color-card)' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="text-lg font-black" style={{ color: 'var(--color-text)' }}>
-            ⚡ List an Item
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+      style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-5xl max-h-[94vh] overflow-y-auto border-[4px]"
+        style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: '8px 8px 0px 0px rgba(0,0,0,1)' }}
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b-[4px]" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="text-sm sm:text-lg font-black uppercase tracking-wide" style={{ color: 'var(--color-text)' }}>
+            Listing Details
           </h2>
-          <button onClick={onClose} className="text-xl leading-none" style={{ color: 'var(--color-text-muted)' }}>×</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-lg sm:text-xl font-black border-[4px] px-3 py-1 leading-none"
+            style={{ color: 'var(--color-text)', borderColor: 'var(--color-border)', background: 'var(--color-card)' }}
+          >
+            ×
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4" id="list-item-form">
-          {/* Photo Upload */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Photo</label>
-            {imagePreview ? (
-              <div className="relative rounded-xl overflow-hidden aspect-[4/3] mb-2">
-                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                <button type="button" onClick={() => { setImageFile(null); setImagePreview(null) }}
-                  className="absolute top-2 right-2 text-xs bg-black/60 text-white px-2 py-1 rounded-full">
-                  Remove
-                </button>
+        <div className="grid grid-cols-1 md:grid-cols-2">
+          <div className="p-4 sm:p-5 border-b-[4px] md:border-b-0 md:border-r-[4px]" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="w-full aspect-square border-[4px] flex items-center justify-center overflow-hidden" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-muted)' }}>
+              {activeImage ? (
+                <img src={activeImage} alt={item?.title || 'Listing image'} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-sm font-black uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
+                  No Image
+                </span>
+              )}
+            </div>
+
+            {images.length > 1 && (
+              <div className="grid grid-cols-5 sm:grid-cols-6 gap-2 mt-3">
+                {images.map((img, idx) => (
+                  <button
+                    key={`${img}-${idx}`}
+                    type="button"
+                    onClick={() => setActiveImageIndex(idx)}
+                    className="aspect-square border-[4px] overflow-hidden"
+                    style={{
+                      borderColor: activeImageIndex === idx ? 'var(--color-accent)' : 'var(--color-border)',
+                      boxShadow: activeImageIndex === idx ? '4px 4px 0px 0px rgba(0,0,0,1)' : 'none',
+                    }}
+                  >
+                    <img src={img} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
               </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed cursor-pointer py-8 transition-colors hover:border-accent/50"
-                style={{ borderColor: 'var(--color-border)' }}>
-                <span className="text-2xl mb-1">📷</span>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Click to upload photo</span>
-                <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
-              </label>
             )}
           </div>
 
-          {/* Title */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Item Title *</label>
-            <input id="title-input" name="title" value={form.title} onChange={handleChange}
-              required placeholder="e.g. Engineering Physics textbook" className="input-field" />
-          </div>
+          <div className="p-4 sm:p-5 flex flex-col min-h-[420px]">
+            <p className="text-xs font-black uppercase tracking-wide mb-2" style={{ color: 'var(--color-text-muted)' }}>
+              Seller: {sellerUsername}
+            </p>
 
-          {/* Price */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Price (₹) *</label>
-            <input id="price-input" name="price" type="number" value={form.price} onChange={handleChange}
-              required min="1" placeholder="200" className="input-field" />
-          </div>
+            <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tight leading-tight" style={{ color: 'var(--color-text)' }}>
+              {item?.title}
+            </h3>
 
-          {/* Category + Condition */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Category *</label>
-              <select id="category-select" name="category" value={form.category} onChange={handleChange} className="input-field">
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
+            <p className="inline-block mt-3 text-xl sm:text-2xl font-black uppercase px-3 py-1 border-[4px]" style={{ background: 'var(--color-price-bg)', color: 'var(--color-price-text)', borderColor: 'var(--color-border)', boxShadow: '6px 6px 0px 0px rgba(0,0,0,1)' }}>
+              ₹{item?.price}
+            </p>
+
+            <div className="mt-5 border-[4px] p-3 min-h-[120px]" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-muted)' }}>
+              <p className="text-xs font-black uppercase tracking-wide mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                Description
+              </p>
+              <p className="text-sm font-semibold leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-text)' }}>
+                {item?.description || 'No description provided.'}
+              </p>
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Condition *</label>
-              <select id="condition-select" name="condition" value={form.condition} onChange={handleChange} className="input-field">
-                {CONDITIONS.map(c => <option key={c}>{c}</option>)}
-              </select>
+
+            {error && (
+              <p className="text-xs font-black uppercase mt-3" style={{ color: 'var(--color-fomo)' }}>
+                {error}
+              </p>
+            )}
+
+            <div className="mt-auto pt-4">
+              <button
+                id={`claim-${item?.id}`}
+                type="button"
+                onClick={handleClaim}
+                disabled={claiming || item?.is_sold}
+                className="w-full border-[4px] py-4 px-4 text-sm sm:text-base font-black uppercase tracking-wider disabled:opacity-60"
+                style={{ color: 'var(--color-bg)', background: 'var(--color-accent)', borderColor: 'var(--color-border)', boxShadow: '8px 8px 0px 0px rgba(0,0,0,1)' }}
+              >
+                {item?.is_sold ? 'Already Sold' : claiming ? 'Claiming...' : 'Claim on WhatsApp'}
+              </button>
             </div>
           </div>
-
-          {/* WhatsApp */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Your WhatsApp Number *</label>
-            <input id="whatsapp-input" name="seller_whatsapp" value={form.seller_whatsapp} onChange={handleChange}
-              required placeholder="919XXXXXXXXX (with country code)" className="input-field" />
-          </div>
-
-          {/* Expiry */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Leave Date / Expiry *</label>
-             <input id="expiry-input" name="expires_at" type="datetime-local" value={form.expires_at} onChange={handleChange}
-               min={minExpiry} required className="input-field" />
-           </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Description (optional)</label>
-            <textarea id="description-input" name="description" value={form.description} onChange={handleChange}
-              rows={3} placeholder="Any extra details — year, edition, reason for selling..." className="input-field resize-none" />
-          </div>
-
-          {error && <p className="text-sm font-semibold" style={{ color: 'var(--color-fomo)' }}>{error}</p>}
-
-          <button id="submit-listing-btn" type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-60">
-            {loading ? 'Posting...' : '⚡ Post Listing'}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   )

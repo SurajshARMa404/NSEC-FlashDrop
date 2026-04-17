@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CountdownTimer from '../components/CountdownTimer'
+import { getPrimaryImage } from '../lib/itemMedia'
 
 const CONDITION_COLORS = {
   'Like New': 'text-green-400',
@@ -159,12 +160,14 @@ export default function MyListings() {
       )}
 
       <div className="space-y-3" id="my-listings-list">
-        {items.map(item => (
+        {items.map(item => {
+          const primaryImage = getPrimaryImage(item)
+          return (
           <div key={item.id} id={`my-item-${item.id}`}
             className={`card p-4 flex gap-4 items-start ${item.is_sold ? 'opacity-50' : ''}`}>
             {/* Image */}
-            {item.image_url && (
-              <img src={item.image_url} alt={item.title}
+            {primaryImage && (
+              <img src={primaryImage} alt={item.title}
                 className="w-20 h-20 object-cover rounded-xl flex-shrink-0" />
             )}
 
@@ -203,7 +206,7 @@ export default function MyListings() {
               </div>
             )}
           </div>
-        ))}
+        )})}
       </div>
     </main>
   )

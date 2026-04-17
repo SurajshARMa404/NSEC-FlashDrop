@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import ListItemModal from './ListItemModal'
+import UploadItemModal from './UploadItemModal'
 
 export default function Navbar() {
   const [user, setUser] = useState(null)
@@ -83,7 +83,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {showModal && <ListItemModal onClose={() => setShowModal(false)} />}
+      {showModal && <UploadItemModal onClose={() => setShowModal(false)} />}
     </>
   )
 }
