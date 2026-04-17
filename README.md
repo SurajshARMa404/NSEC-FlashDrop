@@ -288,7 +288,7 @@ VITE_APP_URL=https://flashdrop.vercel.app
 > **Event**: INnovatrix  
 > **Fest**: Avenir '26 Tech Fest  
 > **Institution**: Netaji Subhash Engineering College (NSEC), Kolkata  
-> **Category**: Web Application / Social Impact / Sustainability
+> **Category**: PS-03 | The Circular Campus Economy         
 
 FlashDrop was designed, architected, and built during the **INnovatrix hackathon** at Avenir '26. The core MVP — auth, listings, realtime feed, WhatsApp claiming, dark mode, and full mobile responsiveness — was shipped within the hackathon window.
 
