@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ListItemModal from './ListItemModal'
+import CountdownTimer from './CountdownTimer'
 import { getPrimaryImage, getSellerUsername } from '../lib/itemMedia'
 
 const CATEGORY_EMOJI = {
@@ -65,6 +66,12 @@ export default function ItemCard({ item, currentUser }) {
               ₹{item.price}
             </span>
           </div>
+
+          {item.expires_at && (
+            <div className="mt-2">
+              <CountdownTimer expiresAt={item.expires_at} />
+            </div>
+          )}
 
           <div className="hidden md:block max-h-0 opacity-0 overflow-hidden transition-all duration-300 group-hover:max-h-28 group-hover:opacity-100">
             <div className="mt-3 pt-3 border-t-[4px]" style={{ borderColor: 'var(--border-main)' }}>

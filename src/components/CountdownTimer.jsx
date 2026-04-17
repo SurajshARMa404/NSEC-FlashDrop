@@ -29,23 +29,38 @@ export default function CountdownTimer({ expiresAt }) {
     return () => clearInterval(id)
   }, [expiresAt])
 
+  const badgeBaseClass =
+    'inline-flex items-center gap-1.5 px-2 py-1 border-[4px] text-[10px] sm:text-xs font-black uppercase tracking-wide'
+
   if (expired) {
     return (
-      <span className="text-xs font-bold text-gray-500 font-mono">
-        EXPIRED
+      <span
+        className={badgeBaseClass}
+        style={{
+          background: 'var(--surface-muted)',
+          color: 'var(--text-muted)',
+          borderColor: 'var(--border-main)',
+          boxShadow: '4px 4px 0px 0px var(--shadow-hard)',
+        }}
+      >
+        ⌛ Expired
       </span>
     )
   }
 
   return (
     <span
-      className={`text-xs font-bold font-mono ${
-        urgent
-          ? 'text-red-500 animate-pulse'
-          : 'text-orange-400'
-      }`}
+      className={`${badgeBaseClass} ${urgent ? 'animate-pulse-fast' : ''}`}
+      style={{
+        background: urgent ? '#FF2D55' : 'var(--price-bg)',
+        color: urgent ? '#FFFFFF' : 'var(--price-text)',
+        borderColor: 'var(--border-main)',
+        boxShadow: urgent
+          ? '6px 6px 0px 0px var(--shadow-hard)'
+          : '4px 4px 0px 0px var(--shadow-hard)',
+      }}
     >
-      ⏱ {timeLeft}
+      {urgent ? '🚨' : '⏱'} {timeLeft}
     </span>
   )
 }
