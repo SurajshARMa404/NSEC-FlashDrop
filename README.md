@@ -15,7 +15,7 @@ List. Claim. Repeat — before the clock runs out.
 
 ---
 
-## 📸 Screenshots
+##  📸  Screenshots
 
 > _Screenshots will be added here_
 
