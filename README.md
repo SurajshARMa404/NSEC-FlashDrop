@@ -9,7 +9,7 @@ List. Claim. Repeat — before the clock runs out.
 
 ---
 
-**Built for [INnovatrix](https://avenir26.nsec.ac.in) @ Avenir '26 Tech Fest — NSEC, Kolkata**
+**Built for [Innovatrix](https://avenir26.nsec.ac.in) @ Avenir '26 Tech Fest — NSEC, Kolkata**
 
 </div>
 
